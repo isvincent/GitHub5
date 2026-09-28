@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GitHub 網址百寶箱</title>
+<meta name="description" content="從 Excel（CSV）檔動態讀取的 GitHub 網址瀏覽與搜尋網頁">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐙</text></svg>">
+<style>
+  :root {
+    --fs: 20px;                 /* 基準字級，可由使用者調整 */
+    --bg: #fffaf0;
+    --ink: #2b2d42;
+    --muted: #5c6178;
+    --card: #ffffff;
+    --line: #e7e3f5;
+    --c1: #ff5d8f; --c2: #ff9f1c; --c3: #ffd23f; --c4: #3ec300;
+    --c5: #00b4d8; --c6: #7b61ff; --c7: #f15bb5; --c8: #06d6a0;
+    --radius: 22px;
+    --shadow: 0 8px 24px rgba(80, 60, 160, .12);
+  }
+  * { box-sizing: border-box; }
+  html { font-size: var(--fs); scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font-family: "Noto Sans TC", "Microsoft JhengHei", "微軟正黑體", "PingFang TC", "Heiti TC", system-ui, sans-serif;
+    color: var(--ink);
+    line-height: 1.6;
+    background:
+      radial-gradient(circle at 10% 10%, #ffe3ec 0 18%, transparent 19%),
+      radial-gradient(circle at 90% 20%, #e0f7ff 0 14%, transparent 15%),
+      radial-gradient(circle at 80% 90%, #fff3c4 0 16%, transparent 17%),
+      radial-gradient(circle at 5% 85%, #e6ffe0 0 12%, transparent 13%),
+      var(--bg);
+    background-attachment: fixed;
+    min-height: 100vh;
+  }
+  button, input, select { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  :focus-visible { outline: 4px solid var(--c6); outline-offset: 3px; }
+
+  /* ===== 頁首 ===== */
+  header {
+    position: relative;
+    overflow: hidden;
+    padding: 1.6rem 1rem 3.2rem;
+    text-align: center;
+    color: #fff;
+    background: linear-gradient(120deg, #7b61ff, #ff5d8f 45%, #ff9f1c 80%, #ffd23f);
+    background-size: 200% 200%;
+    animation: flow 12s ease infinite;
+  }
+  @keyframes flow { 0%,100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
+  header::after { /* 波浪 */
+    content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 48px;
+    background: var(--bg);
+    -webkit-mask: radial-gradient(40px 30px at 50% 0, transparent 98%, #000) 0 0 / 80px 48px repeat-x;
+            mask: radial-gradient(40px 30px at 50% 0, transparent 98%, #000) 0 0 / 80px 48px repeat-x;
+  }
+  .bubbles span {
+    position: absolute; bottom: -40px; border-radius: 50%;
+    background: rgba(255,255,255,.25);
+    animation: rise linear infinite;
+  }
+  @keyframes rise { to { transform: translateY(-420px) scale(1.3); opacity: 0; } }
+  .logo {
+    display: inline-block; font-size: 3.2rem; line-height: 1;
+    animation: bob 3s ease-in-out infinite; cursor: pointer; user-select: none;
+  }
+  @keyframes bob { 50% { transform: translateY(-8px) rotate(-6deg); } }
+  h1 { margin: .3rem 0 .2rem; font-size: 2.1rem; letter-spacing: .08em; text-shadow: 0 3px 0 rgba(0,0,0,.15); }
+  .subtitle { margin: 0; font-size: 1.05rem; opacity: .95; }
+
+  main { max-width: 1200px; margin: -1.2rem auto 0; padding: 0 16px 3rem; position: relative; z-index: 2; }
+
+  /* ===== 工具列 ===== */
+  .toolbar {
+    background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow);
+    padding: 1rem; display: grid; gap: .8rem;
+  }
+  .search-wrap { position: relative; }
+  .search-wrap .icon { position: absolute; left: .9rem; top: 50%; transform: translateY(-50%); font-size: 1.3rem; pointer-events: none; }
+  #search {
+    width: 100%; padding: .8rem 3rem .8rem 3rem; font-size: 1.15rem;
+    border: 3px solid var(--line); border-radius: 999px; background: #fbfaff;
+    transition: border-color .2s, box-shadow .2s;
+  }
+  #search:focus { outline: none; border-color: var(--c6); box-shadow: 0 0 0 6px rgba(123,97,255,.15); }
+  #clearSearch {
+    position: absolute; right: .6rem; top: 50%; transform: translateY(-50%);
+    border: 0; background: #eee9ff; border-radius: 50%; width: 2rem; height: 2rem; font-size: 1rem;
+    display: none;
+  }
+  .row { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+  .row.spread { justify-content: space-between; }
+  .chip, .btn {
+    border: 0; border-radius: 999px; padding: .4rem 1rem; font-size: .95rem; font-weight: 700;
+    background: #f1eefc; transition: transform .15s, background .2s, color .2s, box-shadow .2s;
+  }
+  .chip:hover, .btn:hover { transform: translateY(-2px); box-shadow: 0 4px 10px rgba(0,0,0,.08); }
+  .chip:active, .btn:active { transform: scale(.95); }
+  .chip.active { color: #fff; background: var(--chip, var(--c6)); }
+  .chip .n { display: inline-block; margin-left: .35rem; padding: 0 .45rem; border-radius: 999px; background: rgba(0,0,0,.08); font-size: .8rem; }
+  .chip.active .n { background: rgba(255,255,255,.3); }
+  a.btn { text-decoration: none; display: inline-block; }
+  .btn.primary { background: linear-gradient(135deg, var(--c1), var(--c2)); color: #fff; }
+  .btn.alt { background: linear-gradient(135deg, var(--c5), var(--c8)); color: #fff; }
+  .btn[aria-pressed="true"] { background: var(--c6); color: #fff; }
+  select.btn { appearance: none; padding-right: 1rem; }
+  .label { font-size: .9rem; color: var(--muted); font-weight: 700; }
+
+  /* ===== 統計 ===== */
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: .8rem; margin: 1rem 0; }
+  .stat {
+    border-radius: var(--radius); padding: .8rem 1rem; color: #fff; box-shadow: var(--shadow);
+    display: flex; align-items: center; gap: .7rem;
+  }
+  .stat b { display: block; font-size: 1.6rem; line-height: 1.1; }
+  .stat small { font-size: .85rem; opacity: .95; }
+  .stat .e { font-size: 1.8rem; }
+  .s1 { background: linear-gradient(135deg, #7b61ff, #b388ff); }
+  .s2 { background: linear-gradient(135deg, #ff5d8f, #ff9ebb); }
+  .s3 { background: linear-gradient(135deg, #00b4d8, #72efdd); }
+  .s4 { background: linear-gradient(135deg, #ff9f1c, #ffd23f); color: #4a3200; }
+
+  /* ===== 卡片 ===== */
+  #status { text-align: center; font-size: 1.1rem; color: var(--muted); margin: 1rem 0; }
+  #grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 1rem; }
+  #grid.list { grid-template-columns: 1fr; }
+  .card {
+    --accent: var(--c6);
+    position: relative; background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow);
+    padding: 1rem 1rem .9rem; border-top: 8px solid var(--accent);
+    display: flex; flex-direction: column; gap: .5rem;
+    animation: pop .45s cubic-bezier(.2,1.4,.4,1) both;
+    transition: transform .2s, box-shadow .2s;
+  }
+  .card:hover { transform: translateY(-5px) rotate(-.4deg); box-shadow: 0 14px 30px rgba(80,60,160,.2); }
+  @keyframes pop { from { opacity: 0; transform: translateY(18px) scale(.94); } }
+  .card .top { display: flex; gap: .7rem; align-items: flex-start; padding-right: 2rem; }
+  .avatar {
+    flex: none; width: 3rem; height: 3rem; border-radius: 16px; display: grid; place-items: center;
+    font-size: 1.4rem; font-weight: 900; color: #fff; background: var(--accent);
+    box-shadow: inset 0 -4px 0 rgba(0,0,0,.15);
+  }
+  .card h3 { margin: 0; font-size: 1.15rem; line-height: 1.4; word-break: break-word; }
+  .card h3 a { color: inherit; text-decoration: none; }
+  .card h3 a:hover { text-decoration: underline; text-decoration-color: var(--accent); text-decoration-thickness: 3px; }
+  .card .tag { display: inline-block; margin-top: .2rem; font-size: .8rem; font-weight: 700; padding: .05rem .6rem; border-radius: 999px; background: color-mix(in srgb, var(--accent) 18%, white); color: #333; }
+  .card .url { font-family: Consolas, "Courier New", monospace; font-size: .85rem; color: var(--muted); word-break: break-all; background: #f7f6fc; border-radius: 10px; padding: .3rem .6rem; }
+  .card .actions { display: flex; gap: .4rem; margin-top: auto; flex-wrap: wrap; }
+  .card .actions .btn { padding: .35rem .8rem; font-size: .9rem; }
+  .card .go { background: var(--accent); color: #fff; }
+  .fav { position: absolute; top: .6rem; right: .6rem; border: 0; background: none; font-size: 1.5rem; line-height: 1; filter: grayscale(1); opacity: .5; transition: transform .2s, filter .2s, opacity .2s; }
+  .fav.on { filter: none; opacity: 1; animation: heart .4s; }
+  .fav:hover { transform: scale(1.25); }
+  @keyframes heart { 50% { transform: scale(1.6); } }
+  .card .num { position: absolute; bottom: .5rem; right: .8rem; font-size: .8rem; color: #b5b1c9; font-weight: 700; }
+  .card.flash { animation: flash 1.2s ease 2; }
+  @keyframes flash { 50% { box-shadow: 0 0 0 8px var(--accent); transform: scale(1.03); } }
+  mark { background: #fff176; border-radius: 4px; padding: 0 2px; color: inherit; }
+
+  #grid.list .card { flex-direction: row; align-items: center; flex-wrap: wrap; padding-right: 3rem; }
+  #grid.list .card .top { flex: 1 1 320px; }
+  #grid.list .card .url { flex: 1 1 260px; }
+  #grid.list .card .actions { margin-top: 0; }
+  #grid.list .card .num { display: none; }
+
+  .empty { text-align: center; padding: 2rem 1rem; font-size: 1.2rem; }
+  .empty .big { font-size: 4rem; display: block; animation: bob 2s infinite; }
+
+  /* ===== 提示／載入 ===== */
+  .loader { display: inline-block; width: 1.4rem; height: 1.4rem; border-radius: 50%; border: 4px solid #ddd; border-top-color: var(--c1); animation: spin .8s linear infinite; vertical-align: middle; margin-right: .5rem; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #toast {
+    position: fixed; left: 50%; bottom: 1.5rem; transform: translate(-50%, 150%);
+    background: var(--ink); color: #fff; padding: .7rem 1.4rem; border-radius: 999px; font-weight: 700;
+    box-shadow: var(--shadow); transition: transform .35s cubic-bezier(.2,1.4,.4,1); z-index: 50; width: max-content; max-width: calc(100vw - 32px); text-align: center;
+  }
+  #toast.show { transform: translate(-50%, 0); }
+  #toTop {
+    position: fixed; right: 16px; bottom: 16px; width: 3.2rem; height: 3.2rem; border-radius: 50%; border: 0;
+    background: linear-gradient(135deg, var(--c6), var(--c1)); color: #fff; font-size: 1.4rem; box-shadow: var(--shadow);
+    opacity: 0; pointer-events: none; transition: opacity .3s; z-index: 40;
+  }
+  #toTop.show { opacity: 1; pointer-events: auto; }
+  .drop {
+    border: 4px dashed var(--c5); border-radius: var(--radius); padding: 1.2rem; text-align: center; background: #effbff; margin-top: 1rem;
+  }
+  .drop.over { background: #d9f6ff; border-color: var(--c6); }
+  footer { text-align: center; color: var(--muted); font-size: .9rem; padding: 1rem 16px 2rem; }
+  footer code { background: #efeaff; padding: .1rem .4rem; border-radius: 6px; }
+
+  #confetti { position: fixed; inset: 0; pointer-events: none; z-index: 60; }
+
+  @media (max-width: 600px) {
+    h1 { font-size: 1.6rem; }
+    .logo { font-size: 2.6rem; }
+    #grid { grid-template-columns: 1fr; }
+    .hide-sm { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+  }
+</style>
+</head>
+<body>
+<canvas id="confetti"></canvas>
+
+<header>
+  <div class="bubbles" aria-hidden="true"></div>
+  <div class="logo" id="logo" title="點我一下！" role="img" aria-label="章魚">🐙</div>
+  <h1>GitHub 網址百寶箱</h1>
+  <p class="subtitle">瀏覽、搜尋、收藏好用的 GitHub 專案 ✨</p>
+</header>
+
+<main>
+  <section class="toolbar" aria-label="搜尋與篩選">
+    <div class="search-wrap">
+      <span class="icon" aria-hidden="true">🔍</span>
+      <input id="search" type="search" placeholder="輸入關鍵字搜尋名稱或網址…（按 / 快速搜尋）" aria-label="搜尋 GitHub 網址" autocomplete="off">
+      <button id="clearSearch" aria-label="清除搜尋">✕</button>
+    </div>
+    <div class="row" id="chips" aria-label="分類篩選"></div>
+    <div class="row spread">
+      <div class="row">
+        <button class="btn primary" id="randomBtn">🎲 隨機探索</button>
+        <button class="btn" id="favOnly" aria-pressed="false">❤️ 只看收藏</button>
+        <select class="btn" id="sortSel" aria-label="排序方式">
+          <option value="orig">📋 原始順序</option>
+          <option value="az">🔤 名稱排序</option>
+          <option value="hot">🔥 最常點擊</option>
+        </select>
+        <button class="btn" id="viewBtn" aria-pressed="false">🧱 卡片模式</button>
+      </div>
+      <div class="row">
+        <span class="label hide-sm">字級</span>
+        <button class="btn" id="fontDown" aria-label="縮小字體">A－</button>
+        <button class="btn" id="fontUp" aria-label="放大字體">A＋</button>
+        <button class="btn" id="soundBtn" aria-pressed="true">🔊 音效開</button>
+        <button class="btn alt" id="reloadBtn">🔄 重新讀取</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="stats" aria-label="統計">
+    <div class="stat s1"><span class="e">📚</span><div><b id="stTotal">0</b><small>全部網址</small></div></div>
+    <div class="stat s2"><span class="e">🎯</span><div><b id="stShown">0</b><small>目前顯示</small></div></div>
+    <div class="stat s3"><span class="e">🗂️</span><div><b id="stCats">0</b><small>分類數量</small></div></div>
+    <div class="stat s4"><span class="e">❤️</span><div><b id="stFav">0</b><small>我的收藏</small></div></div>
+  </section>
+
+  <p id="status" role="status"><span class="loader"></span>正在讀取試算表…</p>
+  <section id="grid" aria-live="polite"></section>
+  <div id="dropZone" class="drop" hidden>
+    <p>📂 找不到試算表，或是直接用電腦開啟了本網頁。<br>請把 <b>CSV / Excel 檔</b> 拖曳到這裡，或
+      <label class="btn alt" style="display:inline-block">選擇檔案<input type="file" id="fileInput" accept=".csv,.xlsx,.xls" hidden></label></p>
+  </div>
+</main>
+
+<footer>
+  資料來源：<code id="srcName">—</code>｜最後讀取：<span id="loadTime">—</span><br>
+  只要更新與本頁同資料夾的試算表（C 欄＝名稱、D 欄＝網址），重新整理網頁就會看到新內容。
+</footer>
+
+<button id="toTop" aria-label="回到頂端">⬆</button>
+<div id="toast" role="alert"></div>
+
+<script>
+(() => {
+  "use strict";
+
+  /* ---------- 設定 ---------- */
+  // 依序嘗試讀取以下檔名（與 index.html 同一路徑）
+  const CSV_FILES  = ["github.csv", "GitHub.csv", "data.csv", "links.csv"];
+  const XLSX_FILES = ["github.xlsx", "GitHub.xlsx", "data.xlsx", "links.xlsx"];
+  const SHEETJS = "https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js";
+  const COLORS = ["#7b61ff", "#ff5d8f", "#ff9f1c", "#00b4d8", "#3ec300", "#f15bb5", "#06d6a0", "#e76f51", "#4361ee", "#c77dff"];
+  const EMOJI  = ["🚀", "🌈", "🧩", "🎨", "💡", "🛠️", "📘", "🌟", "🐍", "🦄", "🍀", "🎯"];
+
+  /* ---------- 狀態 ---------- */
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem("ghbox-" + k); return v === null ? d : JSON.parse(v); } catch { return d; } },
+    set(k, v) { try { localStorage.setItem("ghbox-" + k, JSON.stringify(v)); } catch {} }
+  };
+  let items = [];
+  let cat = "全部";
+  let favs = new Set(store.get("favs", []));
+  let clicks = store.get("clicks", {});
+  let soundOn = store.get("sound", true);
+  let fontSize = store.get("font", 20);
+  let listView = store.get("list", false);
+  let favOnly = false;
+
+  const $ = (s) => document.querySelector(s);
+  const grid = $("#grid"), statusEl = $("#status"), search = $("#search");
+
+  /* ---------- 音效（Web Audio 合成，無外部檔案） ---------- */
+  let ctx;
+  function tone(freq, dur = .12, type = "sine", vol = .15, delay = 0) {
+    if (!soundOn) return;
+    try {
+      ctx = ctx || new (window.AudioContext || window.webkitAudioContext)();
+      const t = ctx.currentTime + delay;
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = type; o.frequency.setValueAtTime(freq, t);
+      g.gain.setValueAtTime(vol, t);
+      g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+      o.connect(g).connect(ctx.destination);
+      o.start(t); o.stop(t + dur + .02);
+    } catch {}
+  }
+  const sfx = {
+    click: () => tone(660, .07, "triangle", .12),
+    type:  () => tone(900 + Math.random() * 300, .03, "sine", .04),
+    chip:  () => { tone(523, .08, "triangle"); tone(784, .1, "triangle", .12, .06); },
+    fav:   () => { tone(784, .1); tone(1047, .15, "sine", .15, .08); },
+    unfav: () => { tone(523, .1); tone(392, .15, "sine", .12, .08); },
+    open:  () => { tone(440, .08, "square", .06); tone(880, .12, "square", .06, .07); },
+    copy:  () => tone(1200, .08, "sine", .12),
+    empty: () => { tone(300, .15, "sawtooth", .06); tone(220, .2, "sawtooth", .06, .12); },
+    win:   () => [523, 659, 784, 1047].forEach((f, i) => tone(f, .18, "triangle", .14, i * .09)),
+    spin:  (i) => tone(400 + i * 40, .05, "square", .05),
+    boing: () => { tone(220, .15, "sine", .2); tone(440, .2, "sine", .12, .05); }
+  };
+
+  /* ---------- 讀取試算表 ---------- */
+  function decode(buf) {
+    // 先試 UTF-8；失敗則視為 Excel 預設的 Big5 編碼
+    try { return new TextDecoder("utf-8", { fatal: true }).decode(buf); }
+    catch { return new TextDecoder("big5").decode(buf); }
+  }
+
+  function parseCSV(text) {
+    text = text.replace(/^﻿/, "");
+    const rows = []; let row = [], cell = "", q = false;
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i];
+      if (q) {
+        if (c === '"') { if (text[i + 1] === '"') { cell += '"'; i++; } else q = false; }
+        else cell += c;
+      } else if (c === '"') q = true;
+      else if (c === ",") { row.push(cell); cell = ""; }
+      else if (c === "\n" || c === "\r") {
+        if (c === "\r" && text[i + 1] === "\n") i++;
+        row.push(cell); rows.push(row); row = []; cell = "";
+      } else cell += c;
+    }
+    if (cell !== "" || row.length) { row.push(cell); rows.push(row); }
+    return rows;
+  }
+
+  function loadScript(src) {
+    return new Promise((res, rej) => {
+      if (window.XLSX) return res();
+      const s = document.createElement("script");
+      s.src = src; s.onload = res; s.onerror = rej; document.head.appendChild(s);
+    });
+  }
+
+  async function xlsxRows(buf) {
+    await loadScript(SHEETJS);
+    const wb = XLSX.read(buf, { type: "array" });
+    return XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: "" });
+  }
+
+  async function fetchBuf(name) {
+    const r = await fetch(name + "?t=" + Date.now(), { cache: "no-store" });
+    if (!r.ok) throw new Error(r.status);
+    return r.arrayBuffer();
+  }
+
+  async function loadData() {
+    statusEl.innerHTML = '<span class="loader"></span>正在讀取試算表…';
+    statusEl.hidden = false;
+    for (const f of CSV_FILES) {
+      try { const buf = await fetchBuf(f); return useRows(parseCSV(decode(buf)), f); } catch {}
+    }
+    for (const f of XLSX_FILES) {
+      try { const buf = await fetchBuf(f); return useRows(await xlsxRows(buf), f); } catch {}
+    }
+    statusEl.innerHTML = "😢 無法自動讀取試算表。請確認 <b>github.csv</b> 與本網頁放在同一個資料夾，並透過 GitHub Pages 網址開啟。";
+    $("#dropZone").hidden = false;
+    sfx.empty();
+  }
+
+  function isURL(s) { return /^https?:\/\//i.test(String(s).trim()); }
+
+  function useRows(rows, source) {
+    // A=0 B=1 C=2 D=3；C 欄＝名稱、D 欄＝網址。B 欄若存在則作為分類
+    const list = [];
+    rows.forEach((r) => {
+      const name = String(r[2] ?? "").trim();
+      let url = String(r[3] ?? "").trim();
+      if (!name && !url) return;
+      if (!isURL(url)) {
+        if (/^(www\.)?github\.com\//i.test(url)) url = "https://" + url;
+        else return; // 標題列或無效網址
+      }
+      list.push({ id: list.length + 1, name: name || url, url, cat: String(r[1] ?? "").trim() });
+    });
+    // B 欄看起來不像分類（例如全都不同）就不使用
+    const uniq = new Set(list.map((x) => x.cat).filter(Boolean));
+    const useCat = uniq.size > 1 && uniq.size <= Math.max(2, list.length * .6) && uniq.size <= 20;
+    list.forEach((x) => { if (!useCat || !x.cat) x.cat = useCat ? "未分類" : ""; });
+    items = list;
+    $("#srcName").textContent = source;
+    $("#loadTime").textContent = new Date().toLocaleString("zh-TW");
+    $("#dropZone").hidden = true;
+    if (!items.some((x) => x.cat === cat) ) cat = "全部";
+    buildChips();
+    render();
+    toast(`🎉 已載入 ${items.length} 筆 GitHub 網址`);
+  }
+
+  /* ---------- 繪製 ---------- */
+  function colorOf(s) { let h = 0; for (const ch of s) h = (h * 31 + ch.codePointAt(0)) >>> 0; return COLORS[h % COLORS.length]; }
+  function esc(s) { return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+  function hl(s, q) {
+    const t = esc(s); if (!q) return t;
+    const re = new RegExp("(" + q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + ")", "gi");
+    return t.replace(re, "<mark>$1</mark>");
+  }
+  function repoPath(url) {
+    const m = url.match(/github\.com\/([^/?#]+)(?:\/([^/?#]+))?/i);
+    return m ? { owner: m[1], repo: m[2] || "" } : null;
+  }
+
+  function buildChips() {
+    const box = $("#chips"); box.innerHTML = "";
+    const cats = [...new Set(items.map((x) => x.cat).filter(Boolean))];
+    $("#stCats").textContent = cats.length || "—";
+    if (!cats.length) { box.hidden = true; return; }
+    box.hidden = false;
+    ["全部", ...cats].forEach((c) => {
+      const n = c === "全部" ? items.length : items.filter((x) => x.cat === c).length;
+      const b = document.createElement("button");
+      b.className = "chip" + (c === cat ? " active" : "");
+      b.style.setProperty("--chip", c === "全部" ? "#2b2d42" : colorOf(c));
+      b.innerHTML = `${esc(c)}<span class="n">${n}</span>`;
+      b.onclick = () => { cat = c; sfx.chip(); buildChips(); render(); };
+      box.appendChild(b);
+    });
+  }
+
+  function filtered() {
+    const q = search.value.trim().toLowerCase();
+    const words = q.split(/\s+/).filter(Boolean);
+    let list = items.filter((x) =>
+      (cat === "全部" || x.cat === cat) &&
+      (!favOnly || favs.has(x.url)) &&
+      words.every((w) => (x.name + " " + x.url + " " + x.cat).toLowerCase().includes(w)));
+    const sort = $("#sortSel").value;
+    if (sort === "az") list = [...list].sort((a, b) => a.name.localeCompare(b.name, "zh-Hant"));
+    if (sort === "hot") list = [...list].sort((a, b) => (clicks[b.url] || 0) - (clicks[a.url] || 0));
+    return list;
+  }
+
+  function render() {
+    const q = search.value.trim();
+    const list = filtered();
+    grid.className = listView ? "list" : "";
+    statusEl.hidden = true;
+    $("#stTotal").textContent = items.length;
+    $("#stShown").textContent = list.length;
+    $("#stFav").textContent = items.filter((x) => favs.has(x.url)).length;
+    $("#clearSearch").style.display = q ? "block" : "none";
+
+    if (!list.length) {
+      grid.innerHTML = `<div class="empty" style="grid-column:1/-1"><span class="big">🙈</span>找不到符合「${esc(q || (favOnly ? "收藏" : cat))}」的網址，換個關鍵字試試看！</div>`;
+      return;
+    }
+    const firstWord = q.split(/\s+/)[0] || "";
+    grid.innerHTML = list.map((x, i) => {
+      const col = x.cat ? colorOf(x.cat) : COLORS[(x.id - 1) % COLORS.length];
+      const rp = repoPath(x.url);
+      const letter = rp ? rp.owner[0].toUpperCase() : EMOJI[x.id % EMOJI.length];
+      const hot = clicks[x.url] ? `👆 ${clicks[x.url]}` : "";
+      return `<article class="card" style="--accent:${col};animation-delay:${Math.min(i, 20) * 30}ms" data-url="${esc(x.url)}">
+        <button class="fav ${favs.has(x.url) ? "on" : ""}" data-act="fav" aria-label="收藏 ${esc(x.name)}" title="加入／移除收藏">❤️</button>
+        <div class="top">
+          <div class="avatar" aria-hidden="true">${esc(letter)}</div>
+          <div>
+            <h3><a href="${esc(x.url)}" target="_blank" rel="noopener" data-act="open">${hl(x.name, firstWord)}</a></h3>
+            ${x.cat ? `<span class="tag">${hl(x.cat, firstWord)}</span>` : ""}
+          </div>
+        </div>
+        <div class="url">${hl(x.url.replace(/^https?:\/\//, ""), firstWord)}</div>
+        <div class="actions">
+          <a class="btn go" href="${esc(x.url)}" target="_blank" rel="noopener" data-act="open">🚀 前往</a>
+          <button class="btn" data-act="copy">📋 複製網址</button>
+        </div>
+        <span class="num">#${x.id} ${hot}</span>
+      </article>`;
+    }).join("");
+  }
+
+  /* ---------- 互動 ---------- */
+  grid.addEventListener("click", (e) => {
+    const el = e.target.closest("[data-act]"); if (!el) return;
+    const card = el.closest(".card"); const url = card.dataset.url;
+    const act = el.dataset.act;
+    if (act === "open") {
+      sfx.open();
+      clicks[url] = (clicks[url] || 0) + 1; store.set("clicks", clicks);
+      setTimeout(render, 300);
+    } else if (act === "copy") {
+      copy(url);
+    } else if (act === "fav") {
+      if (favs.has(url)) { favs.delete(url); sfx.unfav(); toast("💔 已從收藏移除"); }
+      else { favs.add(url); sfx.fav(); toast("❤️ 已加入收藏"); burst(e.clientX, e.clientY, 30); }
+      store.set("favs", [...favs]); render();
+    }
+  });
+
+  async function copy(text) {
+    try { await navigator.clipboard.writeText(text); }
+    catch {
+      const t = document.createElement("textarea"); t.value = text; document.body.appendChild(t);
+      t.select(); try { document.execCommand("copy"); } catch {} t.remove();
+    }
+    sfx.copy(); toast("📋 已複製網址！");
+  }
+
+  let typeTimer;
+  search.addEventListener("input", () => {
+    sfx.type();
+    clearTimeout(typeTimer);
+    typeTimer = setTimeout(() => { render(); if (search.value && !filtered().length) sfx.empty(); }, 120);
+  });
+  $("#clearSearch").onclick = () => { search.value = ""; sfx.click(); render(); search.focus(); };
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "/" && document.activeElement !== search) { e.preventDefault(); search.focus(); search.select(); }
+    if (e.key === "Escape" && document.activeElement === search) { search.value = ""; render(); }
+  });
+
+  $("#favOnly").onclick = function () {
+    favOnly = !favOnly; this.setAttribute("aria-pressed", favOnly); sfx.chip(); render();
+  };
+  $("#sortSel").onchange = () => { sfx.click(); store.set("sort", $("#sortSel").value); render(); };
+  $("#sortSel").value = store.get("sort", "orig");
+
+  function setView() {
+    const b = $("#viewBtn");
+    b.textContent = listView ? "📜 清單模式" : "🧱 卡片模式";
+    b.setAttribute("aria-pressed", listView);
+  }
+  $("#viewBtn").onclick = () => { listView = !listView; store.set("list", listView); setView(); sfx.click(); render(); };
+
+  function setFont() { document.documentElement.style.setProperty("--fs", fontSize + "px"); store.set("font", fontSize); }
+  $("#fontUp").onclick = () => { fontSize = Math.min(28, fontSize + 2); setFont(); sfx.click(); toast(`🔠 字級 ${fontSize}px`); };
+  $("#fontDown").onclick = () => { fontSize = Math.max(14, fontSize - 2); setFont(); sfx.click(); toast(`🔡 字級 ${fontSize}px`); };
+
+  function setSound() {
+    const b = $("#soundBtn");
+    b.textContent = soundOn ? "🔊 音效開" : "🔇 音效關";
+    b.setAttribute("aria-pressed", soundOn);
+  }
+  $("#soundBtn").onclick = () => { soundOn = !soundOn; store.set("sound", soundOn); setSound(); sfx.click(); };
+  $("#reloadBtn").onclick = () => { sfx.click(); loadData(); };
+
+  // 隨機探索：輪盤閃動後停在一張卡片
+  let spinning = false;
+  $("#randomBtn").onclick = () => {
+    if (spinning) return;
+    let list = filtered();
+    if (!list.length) { sfx.empty(); toast("🙈 目前沒有可探索的網址"); return; }
+    spinning = true;
+    const target = list[Math.floor(Math.random() * list.length)];
+    let n = 0; const total = 14;
+    const tick = () => {
+      const pick = list[Math.floor(Math.random() * list.length)];
+      toast(`🎲 ${pick.name}`); sfx.spin(n);
+      if (++n < total) setTimeout(tick, 60 + n * 12);
+      else {
+        spinning = false;
+        toast(`🎉 就決定是你了：${target.name}`); sfx.win();
+        const card = [...grid.children].find((c) => c.dataset.url === target.url);
+        if (card) {
+          card.scrollIntoView({ behavior: "smooth", block: "center" });
+          card.classList.remove("flash"); void card.offsetWidth; card.classList.add("flash");
+          const r = card.getBoundingClientRect();
+          setTimeout(() => { const r2 = card.getBoundingClientRect(); burst(r2.left + r2.width / 2, r2.top + r2.height / 2, 80); }, 450);
+        }
+      }
+    };
+    tick();
+  };
+
+  // 章魚彩蛋
+  $("#logo").onclick = (e) => { sfx.boing(); burst(e.clientX, e.clientY, 50); toast("🐙 哈囉！今天也要努力寫程式喔！"); };
+
+  // 回到頂端
+  const toTop = $("#toTop");
+  addEventListener("scroll", () => toTop.classList.toggle("show", scrollY > 400), { passive: true });
+  toTop.onclick = () => { sfx.click(); scrollTo({ top: 0 }); };
+
+  // 拖曳／選擇本機檔案（在電腦直接開啟時使用）
+  async function handleFile(file) {
+    if (!file) return;
+    const buf = await file.arrayBuffer();
+    try {
+      const rows = /\.xlsx?$/i.test(file.name) ? await xlsxRows(buf) : parseCSV(decode(buf));
+      useRows(rows, file.name + "（本機）"); sfx.win();
+    } catch { toast("😢 無法讀取此檔案"); sfx.empty(); }
+  }
+  const dz = $("#dropZone");
+  $("#fileInput").onchange = (e) => handleFile(e.target.files[0]);
+  ["dragover", "dragenter"].forEach((t) => document.addEventListener(t, (e) => { e.preventDefault(); dz.classList.add("over"); }));
+  ["dragleave", "drop"].forEach((t) => document.addEventListener(t, (e) => { e.preventDefault(); dz.classList.remove("over"); }));
+  document.addEventListener("drop", (e) => handleFile(e.dataTransfer.files[0]));
+
+  /* ---------- 提示訊息 ---------- */
+  let toastTimer;
+  function toast(msg) {
+    const t = $("#toast"); t.textContent = msg; t.classList.add("show");
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("show"), 2200);
+  }
+
+  /* ---------- 彩帶特效 ---------- */
+  const cv = $("#confetti"), cx = cv.getContext("2d");
+  let parts = [], raf = 0;
+  function resize() { cv.width = innerWidth; cv.height = innerHeight; }
+  addEventListener("resize", resize); resize();
+  function burst(x, y, n) {
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * Math.PI * 2, s = 3 + Math.random() * 7;
+      parts.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 4, r: 4 + Math.random() * 5,
+        c: COLORS[i % COLORS.length], life: 60 + Math.random() * 30, rot: Math.random() * 6 });
+    }
+    if (!raf) raf = requestAnimationFrame(step);
+  }
+  function step() {
+    cx.clearRect(0, 0, cv.width, cv.height);
+    parts = parts.filter((p) => p.life-- > 0);
+    parts.forEach((p) => {
+      p.vy += .25; p.x += p.vx; p.y += p.vy; p.rot += .2;
+      cx.save(); cx.translate(p.x, p.y); cx.rotate(p.rot);
+      cx.globalAlpha = Math.min(1, p.life / 30); cx.fillStyle = p.c;
+      cx.fillRect(-p.r, -p.r / 2, p.r * 2, p.r); cx.restore();
+    });
+    raf = parts.length ? requestAnimationFrame(step) : 0;
+  }
+
+  /* ---------- 頁首泡泡 ---------- */
+  const bb = document.querySelector(".bubbles");
+  for (let i = 0; i < 14; i++) {
+    const s = document.createElement("span"), d = 12 + Math.random() * 40;
+    Object.assign(s.style, { left: Math.random() * 100 + "%", width: d + "px", height: d + "px",
+      animationDuration: 6 + Math.random() * 8 + "s", animationDelay: -Math.random() * 10 + "s" });
+    bb.appendChild(s);
+  }
+
+  /* ---------- 啟動 ---------- */
+  setFont(); setSound(); setView();
+  loadData();
+})();
+</script>
+</body>
+</html>
